@@ -1,0 +1,23 @@
+{
+   Lattices
+   {
+      Mass
+      {
+         MassFloat.magma
+         GenusSymbols.magma
+         MassRational.magma
+      }
+      RootSystems
+      {
+         RootSystemPos.magma
+      }
+      Genus
+      {
+         TwoNeighbours.m
+      }
+   }
+   Helper
+   {
+
+   }
+}

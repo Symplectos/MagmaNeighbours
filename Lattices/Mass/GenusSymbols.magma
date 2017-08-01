@@ -1,0 +1,471 @@
+/*
+ * File:   GenusSymbols.m
+ * Author: David Lorch (RWTH Aachen), Gilles Bellot
+ * Date:   2011 - Aachen - Germany
+ *
+ * Description: Genus symbols
+ *
+ * Literature:	
+ * 
+ * History:	- 19/07/2011: created by David Lorch
+ * 		- 30/05/2014: changed to intrinsic (GB)
+ *
+ * ToDo:
+ * 
+ * Note:
+ */
+
+// 2011-07-19, please mail any errors to david.lorch@rwth-aachen.de
+
+IsIntegralMatrix := function(A) 
+  return A in RMatrixSpace(IntegerRing(), NumberOfRows(A), NumberOfColumns(A));
+end function;
+
+is_even := function(A)
+  return GCD(Diagonal(A)) mod 2 eq 0;
+end function;
+
+function split_odd(A)  //Nach Kneser, Satz 26.3 Seite 107
+    n0:=NumberOfRows(A);
+    if n0 eq 1 then 
+       return A[1,1], 0;  end if;
+    even:=true; 
+    for j in [1..n0] do 
+       if GF(2) ! A[j][j] ne 0 then i:=j; even:=false; break; end if; 
+    end for;
+    if even then print "Fehler"; end if;
+    C := RMatrixSpace(Integers(8),n0-1,n0) ! 0;
+    //u := Integers() ! (Integers(32) ! A[i,i]^-1);
+    u:=A[i][i]; //=u^-1 mod 8
+    for j in [1..n0-1] do
+        if j lt i then
+	    C[j,j] := 1;
+	    C[j,i] := -A[j,i]*u ;
+        else
+	    C[j,j+1] := 1;
+	    C[j,i] := -A[j+1,i]*u ;
+        end if;
+     end for;
+        B := C*A*Transpose(C);
+    even:=true;
+    for j in [1..n0-1] do 
+       if GF(2) ! B[j][j] ne 0 then i1:=j; even:=false; break; end if; 
+    end for;
+    if even then
+        for j in [1..n0-1] do 
+           for k in [j+1..n0-1] do 
+           if GF(2) ! B[j][k]  ne 0 then j0:=j; k0:=k; break j; end if;
+           end for;
+        end for; 
+        I:=MatrixRing(Integers(8),n0) ! 0; 
+        for j in [1..n0] do I[1][j] := C[j0][j]; end for;
+        I[1][i] +:= 1; 
+        for k in [2..n0] do for j in [1..n0] do I[k][j]:=C[k-1][j]; end for; end for;
+	A := I*A*Transpose(I);
+          C := RMatrixSpace(Integers(8),n0-1,n0) ! 0;
+          u:=A[1][1]; //=u^-1 mod 8
+        for j in [1..n0-1] do
+            C[j,j+1] := 1;
+            C[j,1] := -A[j+1,1]*u ;
+        end for;
+        B := C*A*Transpose(C);
+     end if;
+    return u, B;
+end function;
+
+function twoDiagonalization(A) 
+    n:=NumberOfRows(A);
+    A8:=MatrixRing(Integers(8),n) ! A;
+    AD:=Parent(A) ! 0;
+    B:=A8;
+    for i in [1..n] do  
+        u,B := split_odd(B); 
+        AD[i][i]:=Integers() ! u; 
+    end for;
+    return AD;
+end function;
+
+function two_adic_genus_symbol(A, bound)
+  error if not IsSymmetric(A), "A is not a symmetric matrix";
+  p:=2;
+  n := NumberOfRows(A);
+  F_n := MatrixAlgebra(GF(p), n); // F_p^{n \times n}
+  V_n := VectorSpace(GF(p), n); // F_p^n
+  Z_n := MatrixAlgebra(Integers(), n); // Z^{n \times n}
+  Z8_n := MatrixAlgebra(Integers(8), n); // (Z/8Z)^{n \times n}
+  A := ChangeRing(A, Integers()); // allows A to be formally defined over Rationals() upon calling this routine
+
+  // Divide A by the highest power of p dividing all its elements:
+  g := Content(A); // GCD([GCD(RowSequence(A)[i]): i in [1.. n]]); // gcd of all elements of A
+  v := Valuation(g, p);
+  A := A div (p^v);
+
+ 	A_p := F_n!A; // A over F_2
+    C := Kernel(A_p);
+	  // Otherwise, we split off the Jordan constituent of the highest power of 2:
+    if Dimension(C) eq 0 then
+      e0 := KroneckerSymbol(Determinant(A), 2);
+		  if is_even(A) then
+			  s := 0; // "even"
+  			o := 0; // oddity not applicable for even lattices, stored as 0
+	  	else
+		  	s := 1; // "odd"
+        // An odd matrix can be diagonalized over the 2-adic integers. We can then determine
+        // the oddity by computing the trace of Z/8Z:
+			  AD := twoDiagonalization(A);
+			  o := Integers(8)!Trace(AD); 
+  		end if;
+      return [[v, n, e0, s, Integers()!o]];
+	  else
+      T := ChangeRing(BasisMatrix(C), Integers());
+      B_p := BasisMatrix(Complement(V_n, C));
+      B := ChangeRing(B_p, Integers());
+      AB := B*A*Transpose(B);
+      ABI:=Adjoint(AB);
+      det:=Determinant(AB);
+      deti:=Integers() ! ((Integers(p^bound) ! det) ^-1);
+      X:=B*A*Transpose(T);
+      KOR:= deti*Transpose(X)*ABI*X;
+      J2 := T * A * Transpose(T)-KOR;
+      n0 := Rank(B_p);
+  		if is_even(AB) then
+  			s:=0;
+	  		o:=0;
+		  else
+			  s:=1;
+  			//to compute the oddity diagonalize the matrix over the p-adic integers and 
+	  		//then compute the trace over Z mod 8
+			  AD:=twoDiagonalization(AB);
+  			o:=Integers(8) ! Trace(AD);
+	  	end if;
+      return [[v,n0,KroneckerSymbol(Determinant(AB),p),s,Integers()!o]] cat $$(p^v*J2,bound);
+  	end if;
+end function;
+
+function p_adic_genus_symbol(A, p,bound)
+  error if not IsSymmetric(A), "A is not a symmetric matrix";
+  error if not IsPrime(p), "p is not prime";
+  // parameter "bound": should be >= 3 + p-valuation of the maximal elementary divisor of A
+  // (passed as a parameter since p_adic_genus is usually called multiple times for the
+  // same matrix and calculating elementary divisors is expensive)
+
+  if p eq 2 then return two_adic_genus_symbol(A, bound); end if;
+
+  n := NumberOfRows(A);
+  F_n := MatrixAlgebra(GF(p), n); // F_p^{n \times n}
+  V_n := VectorSpace(GF(p), n); // F_p^n
+  Z_n := MatrixAlgebra(Integers(), n); // Z^{n \times n}
+  A := ChangeRing(A, Integers()); // allows A to be formally defined over Rationals() upon calling this routine
+
+  v := Valuation(Content(A), p);
+  A := A div (p^v);
+  A_p := F_n!A; // A over F_p 
+
+  C := Kernel(A_p);
+  // If the kernel of A mod p is trivial, A consists only of a zero-valuated Jordan constituent.
+	// Otherwise, we split off the Jordan constituent of the highest p-power:
+  if Dimension(C) eq 0 then
+	  e0 := KroneckerSymbol(Determinant(A), p);
+    // printf "Only one Jordan constituent, stopping iteration. p^v=%o.\n", p^v;
+		return [[v, n, e0]];
+  else
+    T := ChangeRing(BasisMatrix(C), Integers());
+    B_p := BasisMatrix(Complement(V_n, C));
+    A_p := B_p * A_p * Transpose(B_p);
+    B := ChangeRing(B_p, Integers());
+    AB := B*A*Transpose(B);
+    ABI:=Adjoint(AB); 
+    det:=Determinant(AB);
+    deti:=Integers() ! ((Integers(p^bound) ! det) ^-1);
+    X:=B*A*Transpose(T); 
+    KOR:= deti*Transpose(X)*ABI*X;
+ 	  J2 := T * A * Transpose(T)-KOR;
+    n0 := Rank(A_p);
+    if IsSquare(Determinant(A_p)) then e0 := 1; else e0 := -1; end if;
+    // printf "Iterating with p^v=%o, matrix A =\n%o\n, matrix A_p =\n%o\nmatrix J2 = \n%o\nbasis of kernel = \n%o\nbasis of complement = \n%o\n\n",p^v,A,A_p,J2,BasisMatrix(C), B_p;
+		return [[v, n0, e0]] cat $$(p^v * J2, p,bound);
+  end if;
+end function;
+
+intrinsic GenusSymbol(A::Mtrx) -> GenSym
+{ Computes the genus symbol of A. (David Lorch) }
+  if not(A in RMatrixSpace(IntegerRing(), NumberOfRows(A), NumberOfColumns(A)))
+     or (NumberOfRows(A) ne NumberOfColumns(A)) or not(IsSymmetric(A)) or
+     not(IsPositiveDefinite(A)) then 
+    error "Argument gram_matrix must be a symmetric positive definite integral matrix.";
+  end if;
+  divisors := [d[1]: d in Factorization(Determinant(A))| d[1] gt 2];
+  g := ElementaryDivisors(A);
+  h := Factorization(g[#g]);
+  sym := [<2, p_adic_genus_symbol(A, 2, Valuation(g[#g], 2)+3)>];
+  for t in h do if t[1] ne 2 then
+    Append(~sym, <t[1], p_adic_genus_symbol(A, t[1], t[2])>);
+  end if; end for;
+  return sym;
+end intrinsic;
+
+canonical_2_adic_compartments:=function(symbol)
+//See Conway-Sloane, pp. 382-383.
+compartments := [];
+comp:=[];
+for s in [0..Maximum(Keys(symbol))] do
+	if s in Keys(symbol) then
+		if symbol[s][4] eq 1 then
+			Append(~comp,s);
+		elif comp ne [] then 
+			Append(~compartments,comp);
+			comp:=[];
+		end if;
+	elif comp ne [] then
+		Append(~compartments,comp);
+		comp:=[];
+	end if;
+end for;
+if comp ne [] then
+	Append(~compartments,comp);	
+end if;
+return compartments;
+end function;
+
+last:=function(L)
+return L[#L];
+end function;
+
+canonical_2_adic_trains:=function(symbol, compartments)
+//See Conway-Sloane, pp. 382-383.
+trains := [];
+tr:=[];
+if compartments[1][1] ne 0 then
+  if IsDefined(symbol,compartments[1][1]-1) then
+    tr cat:=[compartments[1][1]-1];
+  end if;
+end if;
+for i in [1..#compartments] do
+	tr cat:=compartments[i];
+	if i lt #compartments then
+		if IsDefined(symbol,last(compartments[i])+1) then
+			Append(~tr,last(compartments[i])+1);
+		end if;
+		if last(compartments[i])+2 ne compartments[i+1][1] then
+			Append(~trains,tr);
+			tr:=[];
+		end if;
+	else
+		if IsDefined(symbol,last(compartments[i])+1) then
+			Append(~tr,last(compartments[i])+1);
+		end if;
+		Append(~trains,tr);
+	end if;
+end for;
+return trains;
+end function;
+
+canonical_2_adic_reduction:=function(symbol)
+compartments := canonical_2_adic_compartments(symbol);
+// Sign walking:    
+trains := canonical_2_adic_trains(symbol, compartments);
+for tr in trains do
+	i:=#tr;
+	while i ge 2 do
+		if symbol[tr[i]][3] eq -1 then
+			symbol[tr[i]][3] := 1;
+			symbol[tr[i-1]][3] *:= -1;
+			for comp in compartments do
+				if tr[i] in comp or tr[i-1] in comp then
+					symbol[comp[1]][5] := (symbol[comp[1]][5]+4) mod 8;
+				end if;
+			end for;
+		end if;
+		i:=i-1;
+	end while;
+end for;
+for comp in compartments do
+		oddity := &+[symbol[i][5]:i in comp]  mod 8;
+	for i in [2 .. #comp] do
+		sym := symbol[comp[i]];
+		//#normalize the oddity of an odd form to be dim-1+det
+		//#so form is thought to be diag(1,...,1,det)
+		//#where det=3 if sym[3] == -1 and det = 1 if sym[3] == 1 
+		// if possible...
+		if sym[4]  eq 1 then
+			if sym[3] eq -1 then
+				t := sym[2]+2;
+			else
+				t := sym[2]; 
+			end if;
+			symbol[comp[i]][5] := t mod 8; 
+			oddity -:= t;
+		end if;
+	end for;
+	symbol[comp[1]][5] := oddity  mod 8;
+end for;
+return symbol;
+end function;
+
+convert2assarray:=function(symbol)
+if Type(symbol) eq SeqEnum then
+        s:=AssociativeArray(Integers());
+        for i in [1 .. #symbol] do
+                s[symbol[i][1]]:=symbol[i];
+        end for;
+        symbol:=s;
+end if;
+return symbol;
+end function;
+
+get_dimension := function(globalsymbol)
+  d := 0;
+  for s in globalsymbol[1][2] do d +:= s[2]; end for;
+  return d;
+end function;
+
+get_determinant := function(globalsymbol)
+  // ... and today's Obfuscated Code Award goes to:
+  return IntegerRing()!&*[s[1]^(&+[t[1]*t[2]:t in s[2]]): s in globalsymbol];
+end function;
+
+convertfromassarray := function(assarray)
+  sym := [];
+  k := Sort([a: a in Keys(assarray)]);
+  for i in k do
+    Append(~sym, assarray[i]);
+  end for;
+  return sym;
+end function;
+
+canonize := function(globalsymbol)
+  if not (globalsymbol[1][1] eq 2) then
+    // printf "Error, global symbol must start with a local 2-adic symbol!\n";
+    assert(false);
+  end if;
+  
+  new_globalsymbol := globalsymbol;
+  new_globalsymbol[1][2] := convertfromassarray(canonical_2_adic_reduction(convert2assarray(new_globalsymbol[1][2])));
+  return new_globalsymbol;
+end function;
+
+excess := function(localsymbol)
+  p := localsymbol[1];
+  symbol := localsymbol[2];
+  excess := 0;
+  a := 0;
+  if p eq 2 then
+    for k in [1..#symbol] do
+      excess +:= symbol[k][2] - symbol[k][5];
+      if IsOdd(symbol[k][1]) and (symbol[k][3] eq -1) then a +:= 1; end if;
+    end for;
+  else
+    for k in [1..#symbol] do
+      excess +:= symbol[k][2]*(p^symbol[k][1]-1);
+      if IsOdd(symbol[k][1]) and (symbol[k][3] eq -1) then a +:= 1; end if;
+    end for;
+  end if;
+  excess +:= 4*a;
+  return excess;
+end function;
+
+is_GlobalGenus := function(globalsymbol)
+  // assume that the symbol is meant to be positive definite (signature is, at this time, not stored inside global symbols)
+  n := get_dimension(globalsymbol);
+  D := get_determinant(globalsymbol);
+
+  // check sanity of 2-adic component:
+  if globalsymbol[1][1] ne 2 then 
+    printf "is_GlobalGenus failed: symbol must start with two-adic symbol.\n";
+    return false;
+  end if;
+  two := globalsymbol[1][2];
+  for s in two do
+    // even lattice in odd dimension?
+    if (s[2] mod 2 eq 1) and (s[4] eq 0) then printf "even in odd dim\n"; return false; end if;
+/* if these checks fail, the symbol is not sane. Sadly, the canonical form
+   of a valid symbol like [[2, [[1,2,1,1,2],[2,1,-1,1,3]]], [3, [[0,2,1],[1,1,1]]]]
+    may fail these checks.
+   // one-dimensional lattice with impossible trace?
+    if ((s[2] eq 1) and (s[3] eq 1) and not(s[5] in {1,7})) or ((s[2] eq 1) and (s[3] eq -1) and not(s[5] in {3,5})) then return false; end if;
+    // impossible trace for odd two-dimensional symbol?
+    if (s[2] eq 2) and (s[4] eq 1) then
+      if ((s[3] eq 1) and not(s[5] in {0,2,6})) or ((s[3] eq -1) and not(s[5] in {2,4,6})) then return false; end if;
+    end if;
+*/
+    // trace even and dimension odd?
+    if (s[2] - s[5]) mod 2 eq 1 then printf "even trace, odd dim\n"; return false; end if;
+    // even lattice and trace not 0?
+    if (s[4] eq 0) and (s[5] ne 0) then printf "even & trace not 0\n"; return false; end if;
+  end for;
+
+  E := n;
+  for g in globalsymbol do
+    p := g[1];
+    sym := g[2];
+    v := 0;
+    b := 1;
+    for k in [1..#sym] do
+      v +:= sym[k][1]*sym[k][2];
+      b *:= sym[k][3];
+    end for;
+    a := D div p^v;
+    if KroneckerSymbol(a, p) ne b then
+      printf "is_GlobalGenus failed: KroneckerSymbol(%o, %o) != %o\n", a,p,b;
+      return false;
+    end if;
+    if p eq 2 then
+      E := E + excess(g) - n;
+    else
+      E := E + excess(g);
+    end if;
+  end for;
+
+  if E mod 8 ne 0 then
+    printf "is_GlobalGenus failed: oddity formula not satisfied. Is %o, i.e. %o (not zero) mod 8.\n", E, E mod 8;
+    return false;
+  end if;
+  return true;
+end function;
+
+function symbol_of_even_sublattice(globalsymbol)
+  // copy p-adic symbols for p>2:
+  r := [];
+  for s in globalsymbol do if s[1] ne 2 then Append(~r, s); end if; end for;
+  // modify 2-adic symbol:
+  t := globalsymbol[1];
+  if t[1] ne 2 then
+    error "globalsymbol must start with a two-adic symbol!\n";
+  end if;
+  t := t[2];
+  if ((t[1][1] eq 0) and (t[1][4] eq 0)) or (t[1][1] gt 0) then
+    printf "symbol is already even.";
+    return globalsymbol;
+  end if;
+  // Create empty local symbols if necessary:
+  for i in [1,2,3] do
+    if (#t eq i-1) or (t[i][1] ne i-1) then Insert(~t, i, [i-1,0,1,0,0]); end if;
+  end for;
+
+  // cf. Rains/Sloane, Shadow Theory of Unimodular Lattices, table II:
+  cases := [[1,2,1,0,0],[2,1,1,1,1],[1,2,1,2,1],[2,1,-1,3,1],
+    [1,2,-1,0,0],[2,1,-1,5,1],[1,2,1,6,1],[2,1,1,7,1]];
+  cse := cases[t[1][5]+1];
+  i := cse[1]+1;
+  // Dimension change:
+  t[1][2] -:= cse[2];
+  t[i][2] +:= cse[2];
+  // Determinant change:
+  t[1][3] *:= cse[3];
+  t[i][3] *:= cse[3];
+  // Type change: only remain at type II in 2^i if the new 
+  // 2^i-component is type II AND the old 2^i component
+  // was type II as well.
+  t[1][4] := 0;
+  if cse[5] eq 1 then t[i][4] := 1; end if;
+  // Trace (oddity) change:
+  t[1][5] := 0;
+  t[i][5] := (t[i][5] + cse[4]) mod 8;
+
+  // Delete empty local symbols:
+  for i in [3,2,1] do
+    if t[i][2] eq 0 then Remove(~t, i); end if;
+  end for;
+  Insert(~r, 1, <2, t>);
+  return r;
+end function;
